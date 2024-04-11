@@ -124,27 +124,36 @@ class DMA(idWidth: Int, addrWidth: Int, dataWidth: Int, baseAddr: BigInt)
 
   // Mater State Controller
   switch(mState) {
-    is(mIdle) { // initial state
+    is(mIdle) {
+      // when the Enable register is set, the DMA starts to issue read request
       when(mmio_enable === 1.U) {
         mState := mReadSend
       }
     }
-    is(mReadSend) { // send read request
+    is(mReadSend) {
+      // When the ARREady signal is asserted, the slave accepts the
+      // request and the master will move the the mReadResp state
+      // and wait for read response
       when(io.master.ar.ready) {
         mState := mReadResp
       }
     }
-    is(mReadResp) { // get read data
+    is(mReadResp) {
+      // whe tne RValid is assert, the data response returns and
+      // DMA starts to write the data to the desitnation, issuing
+      // write request
       when(io.master.r.valid) {
         mState := mWriteSend
       }
     }
-    is(mWriteSend) { // send write request and data
+    is(mWriteSend) {
+      // when all the write data are sent, wait for write response
       when(mWriteAddrSent && mWriteDataSent) {
         mState := mWriteResp
       }
     }
-    is(mWriteResp) { // get the write response
+    is(mWriteResp) {
+      // When receiving write response (BValid is assert), complete the DMA operation and return the mIDLE state
       when(io.master.b.valid) {
         mState := mIdle
       }
@@ -183,15 +192,16 @@ class DMA(idWidth: Int, addrWidth: Int, dataWidth: Int, baseAddr: BigInt)
     }
   }
 
-  // Master State Datapath
+  // master port datapath
   when(mState === mWriteSend) {
     when(io.master.aw.fire) {
+      // count how many write requests are sent
       request_counter := request_counter + 1.U
     }
   }
 
   when(mState === mReadSend) {
-
+    // calculate read request address
     // base address = n * stride
     io.master.ar.bits.addr := mmio_source_info + (request_counter * mmio_size_cfg(31,24))
 
@@ -201,7 +211,7 @@ class DMA(idWidth: Int, addrWidth: Int, dataWidth: Int, baseAddr: BigInt)
   }
 
   when(mState === mReadResp && io.master.r.valid) {
-
+    // get read response byte mask
     // mask_width is determined by "width" field(source)
     mask_width := MuxLookup(mmio_size_cfg(15,8),"b1111".U,Seq(
       1.U -> "b0001".U,
@@ -212,6 +222,8 @@ class DMA(idWidth: Int, addrWidth: Int, dataWidth: Int, baseAddr: BigInt)
 
     // When we read data back in 32-byte chunks, we design rData_mask to mask out the data we don't need
     rData_mask := mask_width << source_offset
+
+    // get read data value
     List.range(0, 4).map { x =>
       when(rData_mask(x) === 1.U) {
         rData(x) := io.master.r.bits.data(x * 8 + 7, x * 8)
@@ -226,7 +238,7 @@ class DMA(idWidth: Int, addrWidth: Int, dataWidth: Int, baseAddr: BigInt)
   }
 
   when(mState === mWriteSend) {
-
+    // calculate write request address
     // base address = n * stride
     io.master.aw.bits.addr := mmio_dest_info + (request_counter * mmio_size_cfg(23,16))
 
@@ -237,7 +249,7 @@ class DMA(idWidth: Int, addrWidth: Int, dataWidth: Int, baseAddr: BigInt)
       3.U -> "b0111".U,
       4.U -> "b1111".U
     ))
-    // mask out the data we don't write
+    // calculate byte mask to mask out the data we don't write
     io.master.w.bits.strb := mask_width << dest_offset
 
     // adjust data to match write config(destination width)
@@ -245,12 +257,14 @@ class DMA(idWidth: Int, addrWidth: Int, dataWidth: Int, baseAddr: BigInt)
 
   }
 
-  // Check if the data transaction is completed
+  // check DMA operation completion and set signals accordingly
   when(mState === mWriteResp && request_counter === mmio_size_cfg(7,0)) {
     request_counter := 0.U
     mmio_enable := 0.U
     mmio_done   := 1.U
   }
+
+  // check Write Addr and Data status
   when(mState === mWriteSend) {
     when(io.master.w.ready) {
       mWriteDataSent := true.B
@@ -264,8 +278,7 @@ class DMA(idWidth: Int, addrWidth: Int, dataWidth: Int, baseAddr: BigInt)
   }
 
 
-  // Slave State Datapath
-
+  // slave port datapath
   // save the data received from slave interface
   when(sWriteState === sWriteIdle || sWriteState === sWriteExec) {
     when(io.slave.aw.valid) {
