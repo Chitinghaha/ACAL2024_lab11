@@ -12,6 +12,7 @@ class DataMem(
     addrWidth: Int,
     dataWidth: Int,
     baseAddr: BigInt,
+    latency: Int,
     filePath: String
 ) extends Module {
   val io = IO(new Bundle {
@@ -50,14 +51,26 @@ class DataMem(
   )
   val writeAddressReg = RegInit(0.U(addrWidth.W))
   val writeID = RegInit(0.U(idWidth.W))
-  val sIdle :: sReady :: sFinish :: sWaitData :: Nil = Enum(4)
-  val sRead :: sResp :: Nil = Enum(2)
+  val sIdle :: sReady :: sWLatency :: sFinish :: sWaitData :: Nil = Enum(5)
+  val sRead :: sRLatency :: sResp :: Nil = Enum(3)
   val writeState = RegInit(sIdle)
   val readState = RegInit(sRead)
+  val rLatencyCounter = RegInit(0.U(8.W))
+  val wLatencyCounter = RegInit(0.U(8.W))
 
   switch(readState) {
     is(sRead) {
       when(io.slave.ar.fire) {
+        when(latency.U === 1.U) {
+          readState := sResp
+        }
+        .otherwise {
+          readState := sRLatency
+        }
+      }
+    }
+    is(sRLatency) {
+      when(rLatencyCounter === (latency - 1).U) {
         readState := sResp
       }
     }
@@ -71,11 +84,14 @@ class DataMem(
   when(readState === sRead) {
     io.slave.ar.ready := true.B
     io.slave.r.valid := false.B
-    rAddrOffset := ((io.slave.ar.bits.addr - baseAddr.U) & ~(3.U(
-      width.W
-    ))) >> 2.U
+    rAddrOffset := ((io.slave.ar.bits.addr - baseAddr.U) & ~(3.U(width.W))) >> 2.U
     readID := io.slave.ar.bits.id
-  }.elsewhen(readState === sResp) {
+  }
+  .elsewhen(readState === sRLatency) {
+    rLatencyCounter := rLatencyCounter + 1.U
+  }
+  .elsewhen(readState === sResp) {
+    rLatencyCounter := 0.U
     io.slave.ar.ready := false.B
     io.slave.r.valid := true.B
     io.slave.r.bits.data := memory(rAddrOffset)
@@ -90,14 +106,27 @@ class DataMem(
     }
     is(sReady) {
       when(io.slave.aw.valid && io.slave.w.valid) {
-        writeState := sFinish
-      }
-        .elsewhen(io.slave.aw.valid) {
-          writeState := sWaitData
+        when(latency.U === 1.U) {
+          writeState := sFinish
+        }.otherwise {
+          writeState := sWLatency
         }
+      }
+      .elsewhen(io.slave.aw.valid) {
+        writeState := sWaitData
+      }
     }
     is(sWaitData) {
       when(io.slave.w.valid) {
+        when(latency.U === 1.U) {
+          writeState := sFinish
+        }.otherwise {
+          writeState := sWLatency
+        }
+      }
+    }
+    is(sWLatency) {
+      when(wLatencyCounter === (latency - 1).U){
         writeState := sFinish
       }
     }
@@ -122,21 +151,24 @@ class DataMem(
     io.slave.w.ready := false.B
     io.slave.b.bits.resp := 0.U
     io.slave.b.valid := false.B
-  }.elsewhen(writeState === sReady) {
+  }
+  .elsewhen(writeState === sReady) {
     io.slave.aw.ready := true.B
     io.slave.w.ready := true.B
     when(io.slave.aw.valid && io.slave.w.valid) {
       memory(wAddrOffset) := writeData.asUInt()
       writeAddressReg := wAddrOffset
       writeID := io.slave.aw.bits.id
-    }.elsewhen(io.slave.aw.valid) {
+    }
+    .elsewhen(io.slave.aw.valid) {
       writeAddressReg := wAddrOffset
       writeID := io.slave.aw.bits.id
     }
     io.slave.b.bits.resp := 0.U
     io.slave.b.valid := false.B
 
-  }.elsewhen(writeState === sWaitData) {
+  }
+  .elsewhen(writeState === sWaitData) {
     io.slave.aw.ready := false.B
     io.slave.w.ready := true.B
     io.slave.b.bits.resp := 0.U
@@ -144,8 +176,12 @@ class DataMem(
     when(io.slave.w.valid) {
       memory(writeAddressReg) := writeData.asUInt()
     }
-  }.elsewhen(writeState === sFinish) {
-
+  }
+  .elsewhen(writeState === sWLatency) {
+    wLatencyCounter := wLatencyCounter + 1.U
+  }
+  .elsewhen(writeState === sFinish) {
+    wLatencyCounter := 0.U
     io.slave.aw.ready := false.B
     io.slave.w.ready := false.B
     io.slave.b.bits.resp := 0.U
@@ -169,17 +205,4 @@ class DataMem(
 
 }
 
-import chisel3.stage.ChiselStage
-object MemoryApp extends App {
-  (new ChiselStage).emitVerilog(
-    new DataMem(8, 4, 4, 32, 32, 100000, "./src/main/resource/data0.hex"),
-    Array(
-      "-fil",
-      "Memory",
-      "-td",
-      "build",
-      "-X",
-      "verilog"
-    )
-  )
-}
+

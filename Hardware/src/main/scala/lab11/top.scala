@@ -33,6 +33,7 @@ class top(idWidth: Int, addrWidth: Int, dataWidth: Int) extends Module {
       "Height" -> 32, // The Number of bytes
       "Width" -> 32 // unit: 32 bits
     )
+    val LocalMemLatency: Int = 1
     val LocalMemInitFilePath: String =
       "./src/main/resource/data0.hex" // Provide the file path
     val GlobalMemBaseAddr: Int = 1124 // Provide the base address
@@ -41,6 +42,7 @@ class top(idWidth: Int, addrWidth: Int, dataWidth: Int) extends Module {
       "Height" -> 32, // The Number of bytes
       "Width" -> 32 // unit: 32 bits
     )
+    val GlobalMemLatency: Int = 1
     val GlobalMemInitFilePath: String =
       "./src/main/resource/data1.hex" // Provide the file path
   }
@@ -68,6 +70,7 @@ class top(idWidth: Int, addrWidth: Int, dataWidth: Int) extends Module {
       addrWidth,
       dataWidth,
       SystemConfig.LocalMemBaseAddr,
+      SystemConfig.LocalMemLatency,
       SystemConfig.LocalMemInitFilePath
     )
   )
@@ -79,6 +82,7 @@ class top(idWidth: Int, addrWidth: Int, dataWidth: Int) extends Module {
       addrWidth,
       dataWidth,
       SystemConfig.GlobalMemBaseAddr,
+      SystemConfig.GlobalMemLatency,
       SystemConfig.GlobalMemInitFilePath
     )
   )
