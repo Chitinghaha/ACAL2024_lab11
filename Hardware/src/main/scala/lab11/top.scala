@@ -8,6 +8,12 @@ import DMA._
 import AXILite._
 import Memory._
 
+/*
+ DMA < - > Bus - > memory
+            |
+            V
+          memory
+*/
 class top(idWidth: Int, addrWidth: Int, dataWidth: Int) extends Module {
   val io = IO(new Bundle {
     val Hcf = Output(Bool())
@@ -28,7 +34,7 @@ class top(idWidth: Int, addrWidth: Int, dataWidth: Int) extends Module {
       "Width" -> 32 // unit: 32 bits
     )
     val LocalMemInitFilePath: String =
-      "./src/main/resource/data0.txt" // Provide the file path
+      "./src/main/resource/data0.hex" // Provide the file path
     val GlobalMemBaseAddr: Int = 1124 // Provide the base address
     val GlobalMemSize: Map[String, Int] = Map(
       "Size" -> 1024, // Height x Width
@@ -36,7 +42,7 @@ class top(idWidth: Int, addrWidth: Int, dataWidth: Int) extends Module {
       "Width" -> 32 // unit: 32 bits
     )
     val GlobalMemInitFilePath: String =
-      "./src/main/resource/data1.txt" // Provide the file path
+      "./src/main/resource/data1.hex" // Provide the file path
   }
 
   // Module

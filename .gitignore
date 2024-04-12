@@ -1,8 +1,10 @@
 ### Project Specific stuff
-test_run_dir/*
+Hardware/test_run_dir/
+Emulator/obj/
 build/
-.vscode/*
+.vscode/
 project/
+./obj
 ### XilinxISE template
 
 ### System stuff
