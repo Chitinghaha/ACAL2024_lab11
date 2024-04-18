@@ -15,6 +15,3 @@ object AXI_Config {
   )
 }
 
-object Constants {
-  final val DEBUG = false
-}
