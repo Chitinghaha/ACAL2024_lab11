@@ -42,7 +42,7 @@ output_data:
 .text
 main:
 
-li sp,0x10000
+li sp,0x4
 li a2,8
 li a3,3
 li a4,6

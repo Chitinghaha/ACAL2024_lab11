@@ -1,101 +1,78 @@
-lui x02, 0x00000002
-addi x02, x02, 0x00000710
+lui x02, 0x00000010
+addi x02, x02, 0x00000000
+lui x12, 0x00000000
+addi x12, x12, 0x00000008
+lui x13, 0x00000000
+addi x13, x13, 0x00000003
+lui x14, 0x00000000
+addi x14, x14, 0x00000006
+lui x15, 0x00000008
+addi x15, x15, 0x00000000
+lui x16, 0x00000008
+addi x16, x16, 0x00000080
+lui x17, 0x00000008
+addi x17, x17, 0x00000092
 addi sp, sp, -4
 sw ra, 0(sp)
-lui x10, 0x00000008
-addi x10, x10, 0x00000000
-lui x11, 0x00000008
-addi x11, x11, 0x00000080
-lui x12, 0x00000008
-addi x12, x12, 0x00000092
-addi a3, x0, 8
-addi a4, x0, 3
-addi a5, x0, 2
-addi a6, x0, 6
-addi a7, x0, 1
-jal ra, convolution_2d
+jal ra, conv2d
+addi a5, a5, 64
+addi a6, a6, 9
+jal ra, conv2d
 lw ra, 0(sp)
 addi sp, sp, 4
-lui x10, 0x00000008
-addi x10, x10, 0x00000092
-addi a1, x0, 6
-vle8_v v1, 0(a0)
-add a0, a0, a1
-vle8_v v2, 0(a0)
-add a0, a0, a1
-vle8_v v3, 0(a0)
-add a0, a0, a1
-vle8_v v4, 0(a0)
-add a0, a0, a1
-vle8_v v5, 0(a0)
-add a0, a0, a1
-vle8_v v6, 0(a0)
+lw s6, 0(a7)
+lw s7, 6(a7)
+lw s8, 12(a7)
+lw s9, 18(a7)
+lw s10, 24(a7)
+lw s11, 30(a7)
 hcf
-addi sp, sp, -36
-sw s2, 0(sp)
-sw s3, 4(sp)
-sw s4, 8(sp)
-sw s5, 12(sp)
-sw s6, 16(sp)
-sw s7, 20(sp)
-sw s8, 24(sp)
-sw s9, 28(sp)
-sw s10, 32(sp)
-addi s2, x0, 0
-addi s3, x0, 0
-addi s5, x0, 0
-mul t0, s5, a6
-add t0, t0, s2
-mul t0, t0, a6
-add s8, a2, t0
-vadd_vv v1, v0, v0
-addi s6, x0, 0
-addi s7, x0, 0
-addi s4, x0, 0
-mul t1, s4, a3
-add t2, s2, s6
-add t1, t1, t2
-mul t1, t1, a3
-add t1, t1, s7
-add s10, a0, t1
-mul t0, s5, a5
-add t0, t0, s4
-mul t0, t0, a4
-add t0, t0, s6
-mul t0, t0, a4
-add t0, t0, s7
-add s9, a1, t0
-vle8_v v2, 0(s10)
-lb t1, 0(s9)
-vmul_vx v2, v2, t1
-vadd_vv v1, v1, v2
-addi s4, s4, 1
-blt s4, a5, for_loop_kernel_dims
-addi s7, s7, 1
-blt s7, a4, for_loop_kernel_columns
-addi s6, s6, 1
-blt s6, a4, for_loop_kernel_rows
-vse8_v v1, 0(s8)
-addi s5, s5, 1
-blt s5, a7, for_loop_output_dims
-addi s3, s3, 8
-blt s3, a6, for_loop_columns
+srli s0, a3, 1
+lui x05, 0x00000000
+addi x05, x05, 0x00000000
+bge t0, a4, endloop1
+lui x06, 0x00000000
+addi x06, x06, 0x00000000
+bge t1, a4, endloop2
+lui x07, 0x00000000
+addi x07, x07, 0x00000000
+bge t2, a3, endloop3
+lui x28, 0x00000000
+addi x28, x28, 0x00000000
+bge t3, a3, endloop4
+sub s1, t2, s0
+add s1, s1, t0
+addi s1, s1, 1
+sub s2, t3, s0
+add s2, s2, t1
 addi s2, s2, 1
-blt s2, a6, for_loop_rows
-lw s2, 0(sp)
-lw s3, 4(sp)
-lw s4, 8(sp)
-lw s5, 12(sp)
-lw s6, 16(sp)
-lw s7, 20(sp)
-lw s8, 24(sp)
-lw s9, 28(sp)
-lw s10, 32(sp)
-addi sp, sp, 36
+mul s3, s1, a2
+add s3, s3, s2
+add s3, s3, a5
+lb s3, 0(s3)
+mul s4, t2, a3
+add s4, s4, t3
+add s4, s4, a6
+lb s4, 0(s4)
+mul s3, s3, s4
+mul s4, t0, a4
+add s4, s4, t1
+add s4, s4, a7
+lb s5, 0(s4)
+add s5, s5, s3
+sb s5, 0(s4)
+addi t3, t3, 1
+blt t3, a3, loop4
+addi t2, t2, 1
+blt t2, a3, loop3
+addi t1, t1, 1
+blt t1, a4, loop2
+addi t0, t0, 1
+blt t0, a4, loop1
 jalr x0, x1, x0
-nop
-nop
-nop
-nop
-nop
 hcf
+nop
+nop
+nop
+nop
+nop
