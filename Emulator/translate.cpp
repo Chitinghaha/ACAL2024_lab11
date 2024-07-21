@@ -6,6 +6,10 @@
 #include <errno.h>
 #include "translate.h"
 
+#include <fstream>
+#include <string>
+#include <vector>
+
 char* concat(const char *s1, const char *s2){
     const size_t len1 = strlen(s1);
     const size_t len2 = strlen(s2);
@@ -29,11 +33,11 @@ void copy_path(char* argv1, char** path){
 		printf("malloc is failed in 'main', copy the argv[1] to char *path.\n");
 		exit(2);
 	}
-        
+
 	copy_str(*path,argv1);
 
 	ptr = *path + strlen(*path);
-    
+
 	//find the last '/' in argv1
 	while(ptr != *path){
 		if(*ptr == '/'){
@@ -45,7 +49,7 @@ void copy_path(char* argv1, char** path){
 
     if(ptr == *path)
 		**path = '\0';
-	
+
     if(**path)
 		strcat(*path,"/");
 }
@@ -57,6 +61,79 @@ void write_data_hex(uint8_t* mem,FILE* data_file){
 		ret = (uint8_t) mem_read(mem, i + DATA_OFFSET, LBU);
 		fprintf(data_file,"%02x\n",ret);
 	}
+}
+
+void process_data_hex(){
+    std::ifstream infile("./test_code/data.hex");
+    if (!infile.is_open()) {
+       	printf("Error opening file.\n");
+        return;
+    }
+
+    std::vector<std::string> output_lines;
+    std::vector<char*> lines;
+    std::string line;
+
+    while (std::getline(infile, line)) {
+        char* c_line = new char[line.length() + 1];
+        strcpy(c_line, line.c_str());
+        lines.push_back(c_line);
+
+        // Every 4 lines, concatenate them and store in output_lines
+        if (lines.size() == 4) {
+            char* concatenated = concat(lines[3], lines[2]);
+            char* temp = concatenated;
+            concatenated = concat(concatenated, lines[1]);
+            free(temp);
+            temp = concatenated;
+            concatenated = concat(concatenated, lines[0]);
+            free(temp);
+
+            output_lines.push_back(concatenated);
+            free(concatenated);
+
+            for (auto& ln : lines) {
+                delete[] ln;
+            }
+            lines.clear();
+        }
+    }
+
+    // If there are remaining lines less than 4, concatenate them as well
+    if (!lines.empty()) {
+        char* concatenated = lines[0];
+        for (size_t i = 1; i < lines.size(); ++i) {
+            char* temp = concatenated;
+            concatenated = concat(concatenated, lines[i]);
+            free(temp);
+        }
+        output_lines.push_back(concatenated);
+        free(concatenated);
+
+        for (auto& ln : lines) {
+            delete[] ln;
+        }
+    }
+
+    infile.close();
+
+    // Write the concatenated results back to the same file
+    std::ofstream outfile("./test_code/data.hex", std::ios::trunc);
+    if (!outfile.is_open()) {
+        printf("Error opening file for writing.\n");
+        return;
+    }
+
+    for (const auto& out_line : output_lines) {
+        outfile << out_line << std::endl;
+    }
+
+    outfile.close();
+
+    printf("Processing complete.\n");
+
+    return;
+
 }
 
 void translate_to_machine_code(uint8_t* mem,instr* imem, char* argv1){
@@ -161,7 +238,7 @@ void translate_to_machine_code(uint8_t* mem,instr* imem, char* argv1){
 			break;
 
 
-			case ADDI: 
+			case ADDI:
 				// rf[i.a1.reg] = rf[i.a2.reg] + i.a3.imm; break;
 			    binary = (0x04 << 2) + 0x03; //opcode
 				binary += i.a1.reg << 7;     //rd
@@ -236,7 +313,7 @@ void translate_to_machine_code(uint8_t* mem,instr* imem, char* argv1){
 				binary += i.a2.reg << 15; //rs1
 				binary += i.a3.imm << 20; //offset
 			break;
-			case LBU: 
+			case LBU:
 				binary = 0x03; //opcode
 				binary += i.a1.reg << 7; //rd
 				binary += 0b100 << 12; //funct3
@@ -265,7 +342,7 @@ void translate_to_machine_code(uint8_t* mem,instr* imem, char* argv1){
 				binary += i.a2.reg << 15; //rs1
 				binary += i.a3.imm << 20; //offset
 			break;
-			
+
 
 
 			case SB: //mem[rf[i.a2.reg]+i.a3.imm] = *(uint8_t*)&(rf[i.a1.reg]); break;
@@ -285,8 +362,8 @@ void translate_to_machine_code(uint8_t* mem,instr* imem, char* argv1){
 				binary += (i.a3.imm >> 5) << 25;   //imm[11:5]
 			break;
 
-			case SW: 
-			// 	*(uint32_t*)&(mem[rf[i.a2.reg]+i.a3.imm]) = rf[i.a1.reg]; 
+			case SW:
+			// 	*(uint32_t*)&(mem[rf[i.a2.reg]+i.a3.imm]) = rf[i.a1.reg];
 			// 	//printf( "Writing %x to addr %x\n", rf[i.a1.reg], rf[i.a2.reg]+i.a3.imm );
 			// break;
 				binary = (0x08 << 2) + 0x03; //opcode
@@ -297,14 +374,14 @@ void translate_to_machine_code(uint8_t* mem,instr* imem, char* argv1){
 				binary += (i.a3.imm & 0xFE0) << 25;   //imm[11:5]
 			break;
 
-			
+
 
 			case BEQ: //if ( rf[i.a1.reg] == rf[i.a2.reg] ) pc_next = i.a3.imm; break;
 				binary = (0x18 << 2) + 0x03;  //opcode
 				binary += (0b000 << 12);      //funct3
 				binary += i.a1.reg << 15;     //rs1
 				binary += i.a2.reg << 20;     //rs2
-                
+
 				offset = i.a3.imm - (inst_cnt << 2);
 
 				binary += (offset & 0x800) >> 4; // imm[11] -> inst[7]
@@ -317,7 +394,7 @@ void translate_to_machine_code(uint8_t* mem,instr* imem, char* argv1){
 				binary += (0b101 << 12);      //funct3
 				binary += i.a1.reg << 15;     //rs1
 				binary += i.a2.reg << 20;     //rs2
-                
+
 				offset = i.a3.imm - (inst_cnt << 2);
 
 				binary += (offset & 0x800) >> 4; // imm[11] -> inst[7]
@@ -330,7 +407,7 @@ void translate_to_machine_code(uint8_t* mem,instr* imem, char* argv1){
 				binary += (0b111 << 12);      //funct3
 				binary += i.a1.reg << 15;     //rs1
 				binary += i.a2.reg << 20;     //rs2
-                
+
 				offset = i.a3.imm - (inst_cnt << 2);
 
 				binary += (offset & 0x800) >> 4; // imm[11] -> inst[7]
@@ -343,7 +420,7 @@ void translate_to_machine_code(uint8_t* mem,instr* imem, char* argv1){
 				binary += (0b100 << 12);      //funct3
 				binary += i.a1.reg << 15;     //rs1
 				binary += i.a2.reg << 20;     //rs2
-                
+
 				offset = i.a3.imm - (inst_cnt << 2);
 
 				binary += (offset & 0x800) >> 4; // imm[11] -> inst[7]
@@ -356,7 +433,7 @@ void translate_to_machine_code(uint8_t* mem,instr* imem, char* argv1){
 				binary += (0b110 << 12);      //funct3
 				binary += i.a1.reg << 15;     //rs1
 				binary += i.a2.reg << 20;     //rs2
-                
+
 				offset = i.a3.imm - (inst_cnt << 2);
 
 				binary += (offset & 0x800) >> 4; // imm[11] -> inst[7]
@@ -370,7 +447,7 @@ void translate_to_machine_code(uint8_t* mem,instr* imem, char* argv1){
 				binary += (0b001 << 12);      //funct3
 				binary += i.a1.reg << 15;     //rs1
 				binary += i.a2.reg << 20;     //rs2
-                
+
 				offset = i.a3.imm - (inst_cnt << 2);
 
 				binary += (offset & 0x800) >> 4; // imm[11] -> inst[7]
@@ -420,7 +497,7 @@ void translate_to_machine_code(uint8_t* mem,instr* imem, char* argv1){
 				binary += i.a1.reg << 7;
 				binary += (i.a2.imm << 12);
 			break;
-			
+
 			case HCF:
 			    binary = 0x0000000B;
 				//dexit = true;
@@ -490,7 +567,7 @@ void translate_to_machine_code(uint8_t* mem,instr* imem, char* argv1){
 
 		inst_cnt++;
 	}
-    
+
     //write "hcf" in the inst_file
 	fprintf(inst_file, "hcf\n");
 	fprintf(mch_file, "%02x\n", 0x00);
@@ -513,4 +590,6 @@ void translate_to_machine_code(uint8_t* mem,instr* imem, char* argv1){
     fclose(inst_file);
 	fclose(mch_file);
 	fclose(data_file);
+
+	process_data_hex();
 }
