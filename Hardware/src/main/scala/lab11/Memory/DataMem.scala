@@ -55,23 +55,20 @@ class DataMem(
   val sRead :: sRLatency :: sResp :: Nil = Enum(3)
   val writeState = RegInit(sIdle)
   val readState = RegInit(sRead)
-  val rLatencyCounter = RegInit(0.U(8.W))
-  val wLatencyCounter = RegInit(0.U(8.W))
+  val rLatencyCounter = RegInit(1.U(8.W))
+  val wLatencyCounter = RegInit(1.U(8.W))
 
   switch(readState) {
     is(sRead) {
       when(io.slave.ar.fire) {
-        when(latency.U === 1.U) {
-          readState := sResp
-        }
-        .otherwise {
+        when(latency.U =/= 0.U) {
           readState := sRLatency
         }
       }
     }
     is(sRLatency) {
-      when(rLatencyCounter === (latency - 1).U) {
-        readState := sResp
+      when(rLatencyCounter === latency.U && io.slave.r.fire) {
+        readState := sRead
       }
     }
     is(sResp) {
@@ -82,13 +79,36 @@ class DataMem(
   }
 
   when(readState === sRead) {
-    io.slave.ar.ready := true.B
-    io.slave.r.valid := false.B
-    rAddrOffset := ((io.slave.ar.bits.addr - baseAddr.U) & ~(3.U(width.W))) >> 2.U
-    readID := io.slave.ar.bits.id
+      io.slave.ar.ready := true.B
+      when(io.slave.ar.fire && latency.U === 0.U) {
+        io.slave.r.valid := true.B
+        io.slave.r.bits.data := memory(((io.slave.ar.bits.addr - baseAddr.U) & ~(3.U(width.W))) >> 2.U)
+        io.slave.r.bits.id := io.slave.ar.bits.id
+        io.slave.r.bits.last := true.B
+        io.slave.r.bits.resp := 0.U
+      }
+      .otherwise {
+        io.slave.r.valid := false.B
+        rAddrOffset := ((io.slave.ar.bits.addr - baseAddr.U) & ~(3.U(width.W))) >> 2.U
+        readID := io.slave.ar.bits.id
+      }
   }
   .elsewhen(readState === sRLatency) {
-    rLatencyCounter := rLatencyCounter + 1.U
+    when(rLatencyCounter === latency.U) {
+      io.slave.ar.ready := false.B
+      io.slave.r.valid := true.B
+      io.slave.r.bits.data := memory(rAddrOffset)
+      io.slave.r.bits.id := readID
+      io.slave.r.bits.resp := 0.U
+      io.slave.r.bits.last := true.B
+      when(io.slave.r.fire){
+        rLatencyCounter := 0.U
+      }
+    }
+    .otherwise {
+      io.slave.r.valid := false.B
+      rLatencyCounter := rLatencyCounter + 1.U
+    }
   }
   .elsewhen(readState === sResp) {
     rLatencyCounter := 0.U
@@ -106,7 +126,7 @@ class DataMem(
     }
     is(sReady) {
       when(io.slave.aw.valid && io.slave.w.valid) {
-        when(latency.U === 1.U) {
+        when(latency.U === 0.U) {
           writeState := sFinish
         }.otherwise {
           writeState := sWLatency
@@ -126,7 +146,7 @@ class DataMem(
       }
     }
     is(sWLatency) {
-      when(wLatencyCounter === (latency - 1).U){
+      when(wLatencyCounter === latency.U){
         writeState := sFinish
       }
     }
