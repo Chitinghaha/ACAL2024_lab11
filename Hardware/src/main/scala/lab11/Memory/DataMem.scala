@@ -55,20 +55,23 @@ class DataMem(
   val sRead :: sRLatency :: sResp :: Nil = Enum(3)
   val writeState = RegInit(sIdle)
   val readState = RegInit(sRead)
-  val rLatencyCounter = RegInit(1.U(8.W))
-  val wLatencyCounter = RegInit(1.U(8.W))
+  val rLatencyCounter = RegInit(0.U(8.W))
+  val wLatencyCounter = RegInit(0.U(8.W))
 
   switch(readState) {
     is(sRead) {
       when(io.slave.ar.fire) {
-        when(latency.U =/= 0.U) {
+        when(latency.U === 1.U) {
+          readState := sResp
+        }
+        .otherwise {
           readState := sRLatency
         }
       }
     }
     is(sRLatency) {
-      when(rLatencyCounter === latency.U && io.slave.r.fire) {
-        readState := sRead
+      when(rLatencyCounter === (latency - 1).U) {
+        readState := sResp
       }
     }
     is(sResp) {
@@ -79,36 +82,13 @@ class DataMem(
   }
 
   when(readState === sRead) {
-      io.slave.ar.ready := true.B
-      when(io.slave.ar.fire && latency.U === 0.U) {
-        io.slave.r.valid := true.B
-        io.slave.r.bits.data := memory(((io.slave.ar.bits.addr - baseAddr.U) & ~(3.U(width.W))) >> 2.U)
-        io.slave.r.bits.id := io.slave.ar.bits.id
-        io.slave.r.bits.last := true.B
-        io.slave.r.bits.resp := 0.U
-      }
-      .otherwise {
-        io.slave.r.valid := false.B
-        rAddrOffset := ((io.slave.ar.bits.addr - baseAddr.U) & ~(3.U(width.W))) >> 2.U
-        readID := io.slave.ar.bits.id
-      }
+    io.slave.ar.ready := true.B
+    io.slave.r.valid := false.B
+    rAddrOffset := ((io.slave.ar.bits.addr - baseAddr.U) & ~(3.U(width.W))) >> 2.U
+    readID := io.slave.ar.bits.id
   }
   .elsewhen(readState === sRLatency) {
-    when(rLatencyCounter === latency.U) {
-      io.slave.ar.ready := false.B
-      io.slave.r.valid := true.B
-      io.slave.r.bits.data := memory(rAddrOffset)
-      io.slave.r.bits.id := readID
-      io.slave.r.bits.resp := 0.U
-      io.slave.r.bits.last := true.B
-      when(io.slave.r.fire){
-        rLatencyCounter := 0.U
-      }
-    }
-    .otherwise {
-      io.slave.r.valid := false.B
-      rLatencyCounter := rLatencyCounter + 1.U
-    }
+    rLatencyCounter := rLatencyCounter + 1.U
   }
   .elsewhen(readState === sResp) {
     rLatencyCounter := 0.U
@@ -126,7 +106,7 @@ class DataMem(
     }
     is(sReady) {
       when(io.slave.aw.valid && io.slave.w.valid) {
-        when(latency.U === 0.U) {
+        when(latency.U === 1.U) {
           writeState := sFinish
         }.otherwise {
           writeState := sWLatency
@@ -146,7 +126,7 @@ class DataMem(
       }
     }
     is(sWLatency) {
-      when(wLatencyCounter === latency.U){
+      when(wLatencyCounter === (latency - 1).U){
         writeState := sFinish
       }
     }
@@ -162,7 +142,8 @@ class DataMem(
     when(io.slave.w.bits.strb(x) === 1.U) {
       writeData(x) := io.slave.w.bits.data(x * 8 + 7, x * 8)
     }.otherwise {
-      writeData(x) := 0.U
+      writeData(x) := memory(wAddrOffset)(x * 8 + 7, x * 8)
+      // writeData(x) := 0.U
     }
   }
 
@@ -177,6 +158,7 @@ class DataMem(
     io.slave.w.ready := true.B
     when(io.slave.aw.valid && io.slave.w.valid) {
       memory(wAddrOffset) := writeData.asUInt()
+      // printf("Write Data: %x, %x + %x*4\n", writeData.asUInt(), baseAddr.U, writeAddressReg)
       writeAddressReg := wAddrOffset
       writeID := io.slave.aw.bits.id
     }
@@ -212,12 +194,13 @@ class DataMem(
   when(io.dump) {
     /* Dump Memory */
     printf("\t\t======== Data Memory Dump ========\n")
-    printf(p"\t\tFrom base address ${baseAddr}\n")
-    for (i <- 0 until 32) {
+    printf("\t\tFrom base address %d\n", baseAddr.U)
+    // for (i <- 0 until 20) {
+    for (i <- 36 until 46) {
       val indexAddr = baseAddr + i * 4
-      val data = memory(i.U).asSInt
+      val data = memory(i)
       printf(
-        p"\t\tDataMem[${i}] (address = ${indexAddr}) = 0x${Hexadecimal(data)} (${data})\n"
+        "\t\tDataMem[%d] (address = %d(%x)) = 0x%x (%d)\n", i.U, indexAddr.asUInt, indexAddr.asUInt, data.asSInt, data.asSInt
       )
     }
     printf("\n")
