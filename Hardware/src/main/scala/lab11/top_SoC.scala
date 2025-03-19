@@ -56,7 +56,7 @@ class top_SoC(idWidth: Int, addrWidth: Int, dataWidth: Int) extends Module {
         "Height" -> 256,
         "Width" -> 32 // 32 bits
         )
-        val DataMemLatency: Int = 1
+        val DataMemLatency: Int = 20
         val DataMemInitFilePath: String =
         "./src/main/resource/data_HW.hex" // Provide the file path
     }
